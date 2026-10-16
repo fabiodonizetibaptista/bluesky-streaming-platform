@@ -1,0 +1,81 @@
+name: financial-streaming
+
+services:
+  kafka:
+    image: apache/kafka:4.2.2
+    hostname: kafka
+    restart: unless-stopped
+
+    # Isola a porta do broker no próprio Codespace.
+    ports:
+      - "127.0.0.1:9092:9092"
+
+    # Limita recursos para nosso Codespace gratuito.
+    mem_limit: 2g
+
+    environment:
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: "broker,controller"
+
+      # EXTERNAL: clientes Python executados no Codespace.
+      # INTERNAL: futuros serviços na rede Docker.
+      # CONTROLLER: comunicação do quorum KRaft.
+      KAFKA_LISTENERS: "EXTERNAL://:9092,INTERNAL://:19092,CONTROLLER://:29093"
+      KAFKA_ADVERTISED_LISTENERS: "EXTERNAL://127.0.0.1:9092,INTERNAL://kafka:19092"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "EXTERNAL:PLAINTEXT,INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "INTERNAL"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:29093"
+
+      # Configurações compatíveis com um único broker.
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+
+      # Identidade estável do cluster de desenvolvimento.
+      CLUSTER_ID: "4L6g3nShT-eMCtK--X86sw"
+      KAFKA_LOG_DIRS: "/var/lib/kafka/data"
+
+    # Os dados persistem ao recriar o container,
+    # desde que o volume não seja excluído.
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server 127.0.0.1:9092 >/dev/null 2>&1"
+      interval: 15s
+      timeout: 10s
+      retries: 8
+      start_period: 30s
+
+
+  kafka-init:
+    image: apache/kafka:4.2.2
+    restart: "no"
+
+    # Workaround exclusivo para Docker-in-Codespaces.
+    # A rede bridge apresentou falhas de comunicação
+    # entre containers neste ambiente.
+    network_mode: host
+
+    # Só inicia depois que o broker responder ao healthcheck.
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+    environment:
+      BOOTSTRAP_SERVER: "127.0.0.1:9092"
+      TOPIC_NAME: "bluesky.posts.raw"
+
+    # O script é montado somente para leitura.
+    volumes:
+      - ./scripts/create_topics.sh:/scripts/create_topics.sh:ro
+
+    entrypoint: ["/bin/bash", "/scripts/create_topics.sh"]
+
+volumes:
+  kafka_data:
