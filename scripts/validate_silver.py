@@ -7,6 +7,9 @@ Não imprime payloads nem identificadores de eventos.
 """
 
 import json
+import os
+import shutil
+import sys
 import re
 import subprocess
 import time
@@ -63,10 +66,18 @@ def read_rows(directory):
 
 
 def position(row):
-    return (
-        int(row["kafka_partition"]),
-        int(row["kafka_offset"]),
-    )
+    """Valida coordenadas Kafka antes da reconciliação."""
+    if not isinstance(row, dict):
+        raise RuntimeError("INVALID_KAFKA_POSITION_RECORD")
+
+    for field in ("kafka_partition", "kafka_offset"):
+        value = row.get(field)
+
+        # bool é subtipo de int em Python, mas não é coordenada válida.
+        if type(value) is not int or value < 0:
+            raise RuntimeError(f"INVALID_KAFKA_POSITION_FIELD: {field}")
+
+    return (row["kafka_partition"], row["kafka_offset"])
 
 
 def reconcile(source, valid, quarantine, label):
@@ -122,23 +133,29 @@ def submit(sql, label, explain=False):
         )
         require(changed == 1, "STATEMENT_SET_NOT_FOUND")
 
-    result = subprocess.run(
-        FLINK_CMD,
-        input=sql,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        timeout=180,
-    )
+    try:
+        result = subprocess.run(
+            FLINK_CMD,
+            input=sql,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=180,
+        )
+    except subprocess.TimeoutExpired as exc:
+        # O SQL Client pode ter submetido o job antes do timeout.
+        # Nunca removemos os artefatos nem presumimos falha do job.
+        raise RuntimeError(
+            f"{label}_SQL_CLIENT_TIMEOUT: "
+            "submission_state_unknown; inspect Flink REST before retry"
+        ) from exc
 
-    output = result.stdout
+    output = result.stdout or ""
 
-    # Guardamos o diagnóstico fora do repositório e não o
-    # imprimimos integralmente, evitando exposição de payloads.
-    log_path = Path(
-        f"/tmp/flink-silver-{RUN_ID}-{label}.log"
-    )
-    log_path.write_text(output, encoding="utf-8")
+    # Logs completos podem conter detalhes de SQL e dados de origem.
+    # Gravamos somente quando há erro, com permissão exclusiva do usuário.
+    # Não imprimimos stdout integralmente no terminal.
+    log_path = Path(f"/tmp/flink-silver-{RUN_ID}-{label}.log")
 
     errors = (
         "ValidationException",
@@ -158,10 +175,18 @@ def submit(sql, label, explain=False):
     print(f"{label}_EXIT_CODE =", result.returncode)
     print(f"{label}_ERROR_TYPES =", detected)
 
-    require(
-        result.returncode == 0 and not detected,
-        f"{label}_SQL_FAILED",
-    )
+    if result.returncode != 0 or detected:
+        fd = os.open(
+            log_path,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+        )
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            stream.write(output)
+
+        raise RuntimeError(
+            f"{label}_SQL_FAILED: restricted_log={log_path}"
+        )
 
     if explain:
         require("Physical Plan" in output, f"{label}_PLAN_MISSING")
@@ -389,6 +414,15 @@ def main():
     print("=== RESULT ===")
     print("SILVER_VALIDATION = PASSED")
     print("SQL_SOURCE_MODIFIED_BY_VALIDATOR = False")
+
+    # Cleanup é explicitamente opt-in e só ocorre após todos os
+    # jobs e testes terem terminado com sucesso.
+    if "--cleanup-success" in sys.argv[1:]:
+        shutil.rmtree(RUN_ROOT)
+        print("CURRENT_RUN_CLEANUP = COMPLETED")
+    else:
+        print("CURRENT_RUN_ARTIFACTS = PRESERVED")
+
     print("PREVIOUS_OUTPUTS_PRESERVED = True")
 
 
