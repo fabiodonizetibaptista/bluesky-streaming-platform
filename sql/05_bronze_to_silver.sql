@@ -7,8 +7,9 @@
 --   4. Preservar a rastreabilidade pelos metadados Kafka.
 --
 -- Escopo: processamento bounded, sem deduplicação.
--- Os destinos são exclusivos deste experimento V1.
--- Não executar novamente sem avaliar os arquivos já produzidos.
+-- Os caminhos V3 são os destinos padrão deste SQL.
+-- O validador substitui esses caminhos por diretórios isolados.
+-- Não reutilizar destinos que já contenham resultados.
 
 SET 'parallelism.default' = '1';
 SET 'table.local-time-zone' = 'UTC';
@@ -64,7 +65,7 @@ SELECT
     TRY_CAST(source_seq_text AS BIGINT) AS source_seq,
 
     -- Converte a notação UTC ISO-8601 utilizada pelo coletor
-    -- em TIMESTAMP(3), sob o contrato explícito de UTC.
+    -- em TIMESTAMP(6), preservando microssegundos e UTC.
     -- TRY_CAST evita que um registro inválido derrube o job.
     TRY_CAST(
         REPLACE(
@@ -86,53 +87,62 @@ FROM extracted_events;
 -- 4. Classificação: uma regra prioritária por registro
 -- ==========================================================
 
+-- O motivo de rejeição é a única fonte de verdade do contrato.
+-- NULL significa que todas as validações foram satisfeitas.
+CREATE TEMPORARY VIEW rejection_events AS
+SELECT
+    *,
+        CASE
+            WHEN payload IS NOT JSON OBJECT
+                THEN 'INVALID_JSON'
+            WHEN source_name IS DISTINCT FROM 'bluesky_jetstream_v2'
+                THEN 'UNSUPPORTED_SOURCE'
+            WHEN collection_name IS DISTINCT FROM 'app.bsky.feed.post'
+                THEN 'INVALID_COLLECTION'
+            WHEN operation_name IS NULL
+              OR operation_name NOT IN ('create', 'update', 'delete')
+                THEN 'INVALID_OPERATION'
+            WHEN source_seq IS NULL
+              OR source_seq < 0
+              OR source_seq_json IS DISTINCT FROM
+                 CONCAT('[', source_seq_text, ']')
+              OR NOT COALESCE(
+                  REGEXP(source_seq_text, '^[0-9]+$'), FALSE
+              )
+                THEN 'INVALID_SEQUENCE'
+            WHEN event_time_utc IS NULL
+              OR NOT COALESCE(
+                  REGEXP(
+                      event_time_text,
+                      '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]{1,6})?Z$'
+                  ), FALSE
+              )
+                THEN 'INVALID_EVENT_TIME'
+            WHEN witnessed_at_utc IS NULL
+              OR NOT COALESCE(
+                  REGEXP(
+                      witnessed_at_text,
+                      '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]{1,6})?Z$'
+                  ), FALSE
+              )
+                THEN 'INVALID_WITNESSED_AT'
+            ELSE NULL
+        END AS rejection_reason
+FROM typed_events;
+
+-- Mantém o contrato de categorias utilizado desde a Silver V3.
 CREATE TEMPORARY VIEW classified_events AS
 SELECT
     *,
-
     CASE
-        WHEN payload IS NOT JSON OBJECT
-            THEN 'INVALID_JSON'
-
-        WHEN source_name IS DISTINCT FROM 'bluesky_jetstream_v2'
-            THEN 'UNSUPPORTED_SOURCE'
-
-        WHEN collection_name IS DISTINCT FROM 'app.bsky.feed.post'
-          OR operation_name IS NULL
-          OR operation_name NOT IN ('create', 'update', 'delete')
-          OR source_seq IS NULL
-          OR source_seq < 0
-          OR source_seq_text IS NULL
-          -- JSON_QUERY retorna [123] para número e ["123"] para string.
-          -- A comparação impede aceitar strings numéricas.
-          OR source_seq_json IS DISTINCT FROM
-             CONCAT('[', source_seq_text, ']')
-          OR NOT COALESCE(
-              REGEXP(source_seq_text, '^[0-9]+$'), FALSE
-          )
-          OR event_time_utc IS NULL
-          OR witnessed_at_utc IS NULL
-
-          -- A V1 aceita timestamps ISO-8601 em UTC ('Z').
-          -- Outros offsets exigirão uma regra explícita futura.
-          OR NOT COALESCE(
-              REGEXP(
-                  event_time_text,
-                  '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]{1,6})?Z$'
-              ), FALSE
-          )
-          OR NOT COALESCE(
-              REGEXP(
-                  witnessed_at_text,
-                  '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]{1,6})?Z$'
-              ), FALSE
-          )
-            THEN 'INVALID_CONTRACT'
-
-        ELSE 'VALID'
+        WHEN rejection_reason IS NULL THEN 'VALID'
+        WHEN rejection_reason IN (
+            'INVALID_JSON',
+            'UNSUPPORTED_SOURCE'
+        ) THEN rejection_reason
+        ELSE 'INVALID_CONTRACT'
     END AS quality_status
-
-FROM typed_events;
+FROM rejection_events;
 
 -- ==========================================================
 -- 5. Destino: Silver válida
@@ -194,42 +204,7 @@ BEGIN
     INSERT INTO silver_quarantine_sink
     SELECT
         quality_status,
-        CASE
-            WHEN quality_status = 'INVALID_JSON'
-                THEN 'INVALID_JSON'
-            WHEN quality_status = 'UNSUPPORTED_SOURCE'
-                THEN 'UNSUPPORTED_SOURCE'
-            WHEN collection_name IS DISTINCT FROM 'app.bsky.feed.post'
-                THEN 'INVALID_COLLECTION'
-            WHEN operation_name IS NULL
-              OR operation_name NOT IN ('create', 'update', 'delete')
-                THEN 'INVALID_OPERATION'
-            WHEN source_seq IS NULL
-              OR source_seq < 0
-              OR source_seq_json IS DISTINCT FROM
-                 CONCAT('[', source_seq_text, ']')
-              OR NOT COALESCE(
-                  REGEXP(source_seq_text, '^[0-9]+$'), FALSE
-              )
-                THEN 'INVALID_SEQUENCE'
-            WHEN event_time_utc IS NULL
-              OR NOT COALESCE(
-                  REGEXP(
-                      event_time_text,
-                      '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]{1,6})?Z$'
-                  ), FALSE
-              )
-                THEN 'INVALID_EVENT_TIME'
-            WHEN witnessed_at_utc IS NULL
-              OR NOT COALESCE(
-                  REGEXP(
-                      witnessed_at_text,
-                      '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]{1,6})?Z$'
-                  ), FALSE
-              )
-                THEN 'INVALID_WITNESSED_AT'
-            ELSE 'INVALID_CONTRACT'
-        END AS rejection_reason,
+        rejection_reason,
         kafka_partition,
         kafka_offset,
         kafka_timestamp
