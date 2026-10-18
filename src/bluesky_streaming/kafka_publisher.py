@@ -42,13 +42,20 @@ class KafkaPublisher:
             else:
                 result["confirmed"] = True
 
-        # Um BufferError não pode avançar o checkpoint.
-        # Por enquanto, propagamos a falha para a camada superior.
-        self.producer.produce(
-            topic=self.topic,
-            value=message,
-            callback=delivery_callback,
-        )
+        # Uma fila Kafka saturada é falha de publicação, não de
+        # transporte WebSocket. Não fazemos retry automático aqui:
+        # a camada de ingestão interrompe o processamento e preserva
+        # o último checkpoint confirmado.
+        try:
+            self.producer.produce(
+                topic=self.topic,
+                value=message,
+                callback=delivery_callback,
+            )
+        except BufferError as exc:
+            raise RuntimeError(
+                "Publicação Kafka interrompida: buffer do produtor cheio"
+            ) from exc
 
         # Atende os callbacks e aguarda a conclusão das entregas.
         remaining = self.producer.flush(timeout=12)

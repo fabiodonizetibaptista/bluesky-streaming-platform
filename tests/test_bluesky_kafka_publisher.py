@@ -69,7 +69,9 @@ class TestKafkaPublisher(unittest.TestCase):
     def test_buffer_cheio(self):
         publisher = self.make_publisher("buffer_full")
 
-        with self.assertRaises(BufferError):
+        with self.assertRaisesRegex(
+            RuntimeError, "buffer do produtor cheio"
+        ):
             publisher.publish(b'{"source_seq": 100}')
 
     def test_sem_confirmacao(self):
