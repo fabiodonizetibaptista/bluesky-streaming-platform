@@ -12,3 +12,15 @@ data/
 checkpoints/
 logs/
 .DS_Store
+
+# Metadados gerados pela instalação Python
+*.egg-info/
+
+# Estado local do processamento Flink
+/runtime/
+
+# Dependência binária instalada de forma reproduzível
+/connectors/*.jar
+
+# Backup experimental da configuração Docker
+/compose.flink.yaml.bridge.bak

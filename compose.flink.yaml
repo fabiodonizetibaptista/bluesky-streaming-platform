@@ -1,0 +1,39 @@
+services:
+  flink-jobmanager:
+    image: flink:2.2.1-scala_2.12-java17
+    command: jobmanager
+    network_mode: host
+    volumes:
+      - ./connectors/flink-sql-connector-kafka-5.0.0-2.2.jar:/opt/flink/lib/flink-sql-connector-kafka-5.0.0-2.2.jar:ro
+      - ./runtime/flink:/opt/flink/runtime
+    mem_limit: 768m
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: 127.0.0.1
+        jobmanager.rpc.port: 6123
+        jobmanager.memory.process.size: 640m
+        parallelism.default: 1
+        execution.checkpointing.interval: 30s
+        execution.checkpointing.dir: file:///opt/flink/runtime/checkpoints
+        rest.address: 127.0.0.1
+        rest.bind-address: 127.0.0.1
+
+  flink-taskmanager:
+    image: flink:2.2.1-scala_2.12-java17
+    command: taskmanager
+    network_mode: host
+    volumes:
+      - ./connectors/flink-sql-connector-kafka-5.0.0-2.2.jar:/opt/flink/lib/flink-sql-connector-kafka-5.0.0-2.2.jar:ro
+      - ./runtime/flink:/opt/flink/runtime
+    depends_on:
+      - flink-jobmanager
+    mem_limit: 1536m
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: 127.0.0.1
+        jobmanager.rpc.port: 6123
+        taskmanager.memory.process.size: 1280m
+        taskmanager.numberOfTaskSlots: 1
+        parallelism.default: 1
+        execution.checkpointing.interval: 30s
+        execution.checkpointing.dir: file:///opt/flink/runtime/checkpoints

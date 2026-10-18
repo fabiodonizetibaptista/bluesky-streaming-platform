@@ -11,22 +11,28 @@ permissions:
 
 jobs:
   unit-tests:
-    name: Synthetic Event Tests
+    name: Streaming Platform Unit Tests
     runs-on: ubuntu-latest
 
     steps:
+      # Recupera o código da versão avaliada pelo workflow.
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # Usa Python 3.11 para verificar a versão mínima suportada.
       - name: Configure Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
+      # Instala o pacote e suas dependências declaradas no pyproject.toml.
+      - name: Install project dependencies
+        run: python -m pip install -e .
+
+      # Detecta erros de sintaxe antes de executar a suíte.
       - name: Compile Python sources
         run: python -m compileall -q src tests
 
+      # Testes usam mocks e não exigem Kafka ou Bluesky ativos.
       - name: Run automated tests
-        env:
-          PYTHONPATH: src
         run: python -m unittest discover -s tests -v
