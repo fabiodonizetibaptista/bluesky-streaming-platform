@@ -170,7 +170,7 @@ def execute_sql(sql, *, explain=False):
 
 
 def kafka_watermarks():
-    """Consulta offsets disponíveis sem consumir mensagens."""
+    """Consulta offsets de todas as partições sem consumir eventos."""
     consumer = Consumer({
         "bootstrap.servers": "127.0.0.1:9092",
         "group.id": f"silver-validator-preflight-{uuid.uuid4().hex[:8]}",
@@ -178,11 +178,28 @@ def kafka_watermarks():
     })
 
     try:
-        return consumer.get_watermark_offsets(
-            TopicPartition(TOPIC, 0),
-            timeout=10,
-            cached=False,
-        )
+        metadata = consumer.list_topics(TOPIC, timeout=10)
+        topic = metadata.topics.get(TOPIC)
+
+        require(topic is not None, "KAFKA_TOPIC_NOT_FOUND")
+        require(not topic.error, "KAFKA_TOPIC_METADATA_ERROR")
+        require(topic.partitions, "KAFKA_TOPIC_HAS_NO_PARTITIONS")
+
+        result = {}
+
+        for partition_id, partition in sorted(topic.partitions.items()):
+            require(
+                not partition.error,
+                "KAFKA_PARTITION_METADATA_ERROR",
+            )
+
+            result[partition_id] = consumer.get_watermark_offsets(
+                TopicPartition(TOPIC, partition_id),
+                timeout=10,
+                cached=False,
+            )
+
+        return result
     finally:
         consumer.close()
 
@@ -333,17 +350,6 @@ def main():
     require(SQL_TEMPLATE.is_file(), "SQL_TEMPLATE_MISSING")
     require(not root.exists(), "RUN_DIRECTORY_ALREADY_EXISTS")
 
-    branch = subprocess.run(
-        ["git", "branch", "--show-current"],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    require(
-        branch.stdout.strip() == "feat/flink-silver-streaming",
-        "UNEXPECTED_BRANCH",
-    )
-
     active_jobs = [
         job for job in api("/jobs/overview").get("jobs", [])
         if job.get("state") in ACTIVE_STATES
@@ -356,9 +362,13 @@ def main():
         "NO_AVAILABLE_FLINK_SLOT",
     )
 
-    low, high = kafka_watermarks()
-    print("KAFKA_EARLIEST_OFFSET =", low)
-    print("KAFKA_NEXT_OFFSET =", high)
+    watermarks = kafka_watermarks()
+    print("KAFKA_PARTITIONS =", len(watermarks))
+
+    for partition_id, (low, high) in sorted(watermarks.items()):
+        print("KAFKA_PARTITION =", partition_id)
+        print("KAFKA_EARLIEST_OFFSET =", low)
+        print("KAFKA_NEXT_OFFSET =", high)
 
     sql = make_sql(run_id)
     execute_sql(sql, explain=True)

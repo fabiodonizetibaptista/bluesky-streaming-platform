@@ -191,3 +191,45 @@ consumo analítico contínuo.
 A adoção de novas tecnologias deverá ser justificada
 por requisitos concretos de volume, consistência,
 consulta e operação.
+
+
+## Decisões da revisão do PR #4
+
+### Quarentena sem payload bruto
+
+A quarentena segue o contrato estabelecido na Silver bounded:
+armazena o status de qualidade, o motivo da rejeição e as
+coordenadas Kafka, sem duplicar o payload bruto.
+
+A decisão reduz a replicação de conteúdo potencialmente
+sensível em camadas adicionais.
+
+**Limitação:** a recuperação do evento original por coordenadas
+Kafka depende da retenção do tópico. Quando o evento expira,
+a quarentena isoladamente não permite recuperá-lo.
+
+Uma evolução futura deverá avaliar retenção governada da
+Bronze, privacidade, controles de acesso e requisitos de
+reprocessamento antes de incluir payloads na quarentena.
+
+### Parâmetros locais
+
+O SQL V1 foi construído para o ambiente Docker Compose
+local do projeto.
+
+O endereço `127.0.0.1:9092` e os caminhos
+`file:///opt/flink/runtime/...` não representam uma
+configuração universal para ambientes de produção.
+
+Outros ambientes precisam parametrizar conectividade,
+armazenamento e políticas operacionais.
+
+### Independência de branch
+
+O validador não exige mais a branch de desenvolvimento.
+Pode ser utilizado em `main`, branches de feature ou
+checkouts automatizados, desde que os serviços estejam
+disponíveis.
+
+A publicação de cinco eventos continua exigindo
+a opção explícita `--run`.

@@ -119,5 +119,48 @@ class TestSilverStreamingValidator(unittest.TestCase):
         )
 
 
+    def test_watermarks_cover_all_kafka_partitions(self):
+        """Descoberta e consulta de todas as partições disponíveis."""
+        from unittest.mock import patch
+
+        class FakePartition:
+            error = None
+
+        class FakeTopic:
+            error = None
+            partitions = {
+                0: FakePartition(),
+                1: FakePartition(),
+                2: FakePartition(),
+            }
+
+        class FakeMetadata:
+            topics = {validator.TOPIC: FakeTopic()}
+
+        class FakeConsumer:
+            def __init__(self, config):
+                self.closed = False
+
+            def list_topics(self, topic, timeout):
+                return FakeMetadata()
+
+            def get_watermark_offsets(self, partition, timeout, cached):
+                return (0, 100 + partition.partition)
+
+            def close(self):
+                self.closed = True
+
+        with patch.object(validator, "Consumer", FakeConsumer):
+            result = validator.kafka_watermarks()
+
+        self.assertEqual(
+            result,
+            {
+                0: (0, 100),
+                1: (0, 101),
+                2: (0, 102),
+            },
+        )
+
 if __name__ == "__main__":
     unittest.main()
