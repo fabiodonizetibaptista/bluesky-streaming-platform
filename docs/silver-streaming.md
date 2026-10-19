@@ -233,3 +233,19 @@ disponíveis.
 
 A publicação de cinco eventos continua exigindo
 a opção explícita `--run`.
+
+### Inicialização Kafka e recuperação
+
+O modo `earliest-offset` presente no template inicia uma **nova
+execução sem estado recuperado** a partir do início disponível do
+tópico Kafka. Isso é intencional para experimentos locais de replay.
+
+Esse comportamento não deve ser confundido com a restauração de
+um checkpoint ou savepoint do Flink, que recupera também as posições
+de leitura armazenadas no estado do job.
+
+Submeter novamente o SQL sem restaurar estado pode reprocessar
+offsets históricos e produzir arquivos duplicados. Reutilizar um
+`group.id` Kafka, isoladamente, não garante continuidade exatamente
+uma vez. Para retomar processamento, usar uma estratégia explícita
+de recuperação de estado e gerenciamento dos destinos.

@@ -162,5 +162,68 @@ class TestSilverStreamingValidator(unittest.TestCase):
             },
         )
 
+    def test_api_recovers_after_transient_failure(self):
+        from unittest.mock import patch
+        from urllib.error import URLError
+        from io import BytesIO
+
+        class FakeResponse:
+            def __enter__(self):
+                return BytesIO(b'{"state":"RUNNING"}')
+
+            def __exit__(self, *args):
+                return False
+
+        with (
+            patch.object(
+                validator,
+                "urlopen",
+                side_effect=[URLError("temporary"), FakeResponse()],
+            ) as request,
+            patch.object(validator.time, "sleep") as sleep,
+        ):
+            result = validator.api("/overview")
+
+        self.assertEqual(result["state"], "RUNNING")
+        self.assertEqual(request.call_count, 2)
+        sleep.assert_called_once()
+
+    def test_api_fails_after_retry_budget(self):
+        from unittest.mock import patch
+        from urllib.error import URLError
+
+        with (
+            patch.object(
+                validator,
+                "urlopen",
+                side_effect=URLError("temporary"),
+            ) as request,
+            patch.object(validator.time, "sleep"),
+        ):
+            with self.assertRaisesRegex(
+                RuntimeError, "FLINK_REST_TRANSPORT_RETRIES_EXHAUSTED"
+            ):
+                validator.api("/overview")
+
+        self.assertEqual(request.call_count, 3)
+
+    def test_api_does_not_retry_definitive_http_error(self):
+        from unittest.mock import patch
+        from urllib.error import HTTPError
+
+        error = HTTPError(
+            "http://example.invalid", 404, "Not Found", None, None
+        )
+
+        with patch.object(
+            validator, "urlopen", side_effect=error
+        ) as request:
+            with self.assertRaisesRegex(
+                RuntimeError, "FLINK_REST_HTTP_404"
+            ):
+                validator.api("/jobs/unknown")
+
+        self.assertEqual(request.call_count, 1)
+
 if __name__ == "__main__":
     unittest.main()

@@ -19,6 +19,7 @@ import subprocess
 import time
 import uuid
 from pathlib import Path
+from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
 from confluent_kafka import Consumer, Producer, TopicPartition
@@ -55,8 +56,33 @@ def require(condition, reason):
 
 
 def api(endpoint):
-    with urlopen(FLINK_API + endpoint, timeout=10) as response:
-        return json.load(response)
+    """Consulta Flink REST com retry apenas para falhas transitórias."""
+    for attempt in range(3):
+        try:
+            with urlopen(FLINK_API + endpoint, timeout=10) as response:
+                return json.load(response)
+
+        except HTTPError as exc:
+            # Erros 4xx definitivos não devem ser escondidos.
+            # 429 e erros 5xx podem ser transitórios.
+            if exc.code != 429 and exc.code < 500:
+                raise RuntimeError(
+                    f"FLINK_REST_HTTP_{exc.code}"
+                ) from exc
+            if attempt == 2:
+                raise RuntimeError(
+                    f"FLINK_REST_HTTP_RETRIES_EXHAUSTED_{exc.code}"
+                ) from exc
+
+        except (URLError, TimeoutError, ConnectionError) as exc:
+            if attempt == 2:
+                raise RuntimeError(
+                    "FLINK_REST_TRANSPORT_RETRIES_EXHAUSTED"
+                ) from exc
+
+        time.sleep(min(2 ** attempt, 4))
+
+    raise RuntimeError("FLINK_REST_UNEXPECTED_RETRY_EXIT")
 
 
 def position(row):
