@@ -5,6 +5,8 @@ services:
     network_mode: host
     volumes:
       - ./connectors/flink-sql-connector-kafka-5.0.0-2.2.jar:/opt/flink/lib/flink-sql-connector-kafka-5.0.0-2.2.jar:ro
+      - ./runtime/flink/connectors/paimon-flink-2.2-1.4.2.jar:/opt/flink/lib/paimon-flink-2.2-1.4.2.jar:ro
+      - ./runtime/flink/connectors/paimon-hadoop-uber-1.4.2.jar:/opt/flink/lib/paimon-hadoop-uber-1.4.2.jar:ro
       - ./runtime/flink:/opt/flink/runtime
     mem_limit: 768m
     environment:
@@ -24,6 +26,8 @@ services:
     network_mode: host
     volumes:
       - ./connectors/flink-sql-connector-kafka-5.0.0-2.2.jar:/opt/flink/lib/flink-sql-connector-kafka-5.0.0-2.2.jar:ro
+      - ./runtime/flink/connectors/paimon-flink-2.2-1.4.2.jar:/opt/flink/lib/paimon-flink-2.2-1.4.2.jar:ro
+      - ./runtime/flink/connectors/paimon-hadoop-uber-1.4.2.jar:/opt/flink/lib/paimon-hadoop-uber-1.4.2.jar:ro
       - ./runtime/flink:/opt/flink/runtime
     depends_on:
       - flink-jobmanager
@@ -33,7 +37,7 @@ services:
         jobmanager.rpc.address: 127.0.0.1
         jobmanager.rpc.port: 6123
         taskmanager.memory.process.size: 1280m
-        taskmanager.numberOfTaskSlots: 1
+        taskmanager.numberOfTaskSlots: 2
         parallelism.default: 1
         execution.checkpointing.interval: 30s
         execution.checkpointing.dir: file:///opt/flink/runtime/checkpoints
