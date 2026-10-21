@@ -9,6 +9,7 @@ ACK do Kafka e checkpoint simples e verificável.
 
 import asyncio
 import json
+import time
 from urllib.parse import urlencode
 
 from websockets.asyncio.client import connect
@@ -52,15 +53,33 @@ def build_url(cursor: int | None) -> str:
 class ProcessingFailure(Exception):
     """Sinaliza falha fatal no processamento de um evento."""
 
-async def ingest_events() -> None:
+async def ingest_events(
+    *,
+    min_events: int | None = None,
+    min_duration_seconds: float = 0,
+    max_duration_seconds: float | None = None,
+) -> int:
     """Consome eventos, isolando erros de transporte e processamento."""
     checkpoint = CheckpointStore(CHECKPOINT_PATH)
     publisher = KafkaPublisher()
 
     confirmed = 0
     reconnect_attempts = 0
+    started = time.monotonic()
+    required_events = MAX_EVENTS if min_events is None else min_events
 
-    while confirmed < MAX_EVENTS:
+    if (
+        required_events < 1
+        or MAX_EVENTS < required_events
+        or min_duration_seconds < 0
+        or (
+            max_duration_seconds is not None
+            and max_duration_seconds <= min_duration_seconds
+        )
+    ):
+        raise ValueError("INVALID_COLLECTION_LIMITS")
+
+    while True:
         # Qualquer falha na leitura do checkpoint é fatal.
         cursor = checkpoint.load()
         url = build_url(cursor)
@@ -105,8 +124,31 @@ async def ingest_events() -> None:
                 confirmed += 1
                 reconnect_attempts = 0
 
-                if confirmed >= MAX_EVENTS:
+                elapsed = time.monotonic() - started
+
+                # Encerramento normal: ambas as condições.
+                if (
+                    confirmed >= required_events
+                    and elapsed >= min_duration_seconds
+                ):
                     break
+
+                # Limites de segurança não são sucesso.
+                if confirmed >= MAX_EVENTS:
+                    raise RuntimeError("COLLECTION_EVENT_LIMIT_REACHED")
+
+                if (
+                    max_duration_seconds is not None
+                    and elapsed >= max_duration_seconds
+                ):
+                    raise RuntimeError("COLLECTION_TIMEOUT")
+
+            if (
+                confirmed >= required_events
+                and time.monotonic() - started
+                    >= min_duration_seconds
+            ):
+                break
 
         except ProcessingFailure:
             raise RuntimeError(
@@ -133,6 +175,7 @@ async def ingest_events() -> None:
 
     print("EVENTS_CONFIRMED =", confirmed)
     print("CHECKPOINT_SAVED =", checkpoint.load() is not None)
+    return confirmed
 
 
 def main() -> None:

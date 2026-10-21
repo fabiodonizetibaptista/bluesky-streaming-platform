@@ -17,6 +17,11 @@ where = ["src"]
 
 
 [project.optional-dependencies]
+ml = [
+    "numpy>=2,<3",
+    "scikit-learn>=1.7,<2",
+    "joblib>=1,<2",
+]
 dev = [
     "pytest>=8,<10",
 ]

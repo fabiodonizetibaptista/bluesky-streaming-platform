@@ -1,243 +1,245 @@
-# Real-Time Social Streaming Platform
+# Bluesky Streaming Platform
 
-A data engineering portfolio project that ingests real public
-activity events from Bluesky Jetstream v2 into Apache Kafka.
+**Real-Time Data Engineering | Streaming ELT | Lakehouse | Machine Learning**
 
-The project focuses on reliable streaming ingestion, event
-contracts, recovery, data minimization, and automated testing.
+An end-to-end data engineering portfolio project that collects
+real public events from Bluesky Jetstream and transforms them
+into validated analytical datasets and experimental anomaly detection.
 
-## Project Objective
+The platform demonstrates a **streaming-oriented Modern Data Stack**,
+combining Apache Kafka, Apache Flink, Apache Paimon, Python,
+Prometheus, Grafana and scikit-learn.
 
-Build an event-driven data platform capable of collecting
-public social activity metadata and preparing it for
-near-real-time analytics.
+> **Status:** End-to-end execution successfully validated.
+> This is a portfolio proof of concept, not a production service.
 
-The current milestone implements Bluesky-to-Kafka ingestion
-and an experimentally validated Kafka-to-Apache-Flink Bronze pipeline.
-Silver transformations, Gold analytics, and analytical serving remain planned.
+## Modern Data Stack Architecture
 
-## Architecture
+The architecture separates data ingestion, streaming transformation,
+lakehouse storage, machine learning, execution coordination and
+observability.
 
-```text
-Bluesky Jetstream v2
-        |
-        v
-Python Collector
-        |
-        | Validation and data minimization
-        | Kafka delivery confirmation
-        | Persistent source checkpoint
-        v
-Apache Kafka (KRaft)
-        |
-        v
-Apache Flink 2.2.1 [BRONZE VALIDATED]
-        |
-        +--> Bronze: Kafka payload + transport metadata [VALIDATED]
-        |       |
-        |       v
-        |   Silver: quality and event-time processing [PLANNED]
-        |       |
-        |       v
-        |   Gold: analytical outputs [PLANNED]
-        |
-        +--> Quarantine / DLQ [PLANNED]
+```mermaid
+flowchart TB
+
+    subgraph SOURCE["EXTERNAL DATA SOURCE"]
+        BS["Bluesky Jetstream v2"]
+    end
+
+    subgraph PLATFORM["LOCAL DATA PLATFORM"]
+        direction TB
+
+        subgraph SERVICES["CONTAINERIZED SERVICES — DOCKER COMPOSE"]
+            direction LR
+
+            subgraph TRANSPORT["EVENT TRANSPORT"]
+                KF["Apache Kafka<br/>KRaft Broker"]
+            end
+
+            subgraph ENGINE["STREAM PROCESSING / ELT"]
+                FL["Apache Flink<br/>SQL · Stateful Processing<br/>Event Time · Watermarks"]
+            end
+
+            subgraph MONITOR["OBSERVABILITY"]
+                PR["Prometheus<br/>Metrics"]
+                GR["Grafana<br/>Dashboards"]
+                PR --> GR
+            end
+        end
+
+        subgraph HOST["HOST EXECUTION & STORAGE"]
+            direction LR
+
+            subgraph INGESTION["DATA INGESTION"]
+                PY["Python Collector<br/>WebSocket · Validation<br/>Source Checkpoint"]
+            end
+
+            subgraph STORAGE["LAKEHOUSE STORAGE — APACHE PAIMON"]
+                direction TB
+
+                subgraph MEDALLION["MEDALLION ARCHITECTURE"]
+                    direction LR
+                    BR[("Bronze<br/>Kafka Records")]
+                    SI[("Silver<br/>Validated Events")]
+                    GO[("Gold<br/>10s Windows")]
+                    BR --> SI --> GO
+                end
+
+                QT[("Quarantine<br/>Rejected Records")]
+                SI --> QT
+            end
+
+            subgraph ML["DATA SCIENCE & MACHINE LEARNING"]
+                FE["Python<br/>Feature Engineering"]
+                IF["scikit-learn<br/>Isolation Forest"]
+                FE --> IF
+            end
+        end
+
+        subgraph CONTROL["EXECUTION COORDINATION"]
+            RUN["Python E2E Runner<br/>Job Submission · Lifecycle · ML"]
+            CMP["Docker Compose CLI<br/>Service Lifecycle"]
+        end
+    end
+
+    BS --> PY
+    PY --> KF
+    KF --> FL
+    FL --> BR
+    GO --> FE
+
+    RUN -. "Coordinates collection" .-> PY
+    RUN -. "Submits streaming jobs" .-> FL
+    RUN -. "Executes ML" .-> FE
+
+    CMP -. "Manages services" .-> SERVICES
+    FL -. "Reads and writes" .-> STORAGE
+    FL -. "Operational metrics" .-> PR
+
+    classDef source fill:#e6f2ff,stroke:#3880bd,color:#173953
+    classDef transport fill:#dff5f7,stroke:#218b99,color:#17434b
+    classDef processing fill:#e9e9fc,stroke:#7770bd,color:#302b60
+    classDef bronze fill:#f5dcc0,stroke:#b8793b,color:#60401a
+    classDef silver fill:#e5ebf2,stroke:#8193aa,color:#253649
+    classDef gold fill:#fff0bd,stroke:#d2a22b,color:#5b470e
+    classDef analytics fill:#e2f5e9,stroke:#4b9c70,color:#20543a
+    classDef operations fill:#f1eafa,stroke:#9279b7,color:#453265
+
+    class BS source
+    class PY,KF transport
+    class FL processing
+    class BR bronze
+    class SI,QT silver
+    class GO gold
+    class FE,IF analytics
+    class PR,GR,RUN,CMP operations
+
+    style PLATFORM fill:#f8fafc,stroke:#64748b,stroke-width:2px
+    style SERVICES fill:#ffffff,stroke:#94a3b8
+    style HOST fill:#ffffff,stroke:#94a3b8
+    style STORAGE fill:#f8fafc,stroke:#7b8fa5,stroke-width:2px
+    style MEDALLION fill:#ffffff,stroke:#a7b4c3
 ```
 
-See [Architecture Design](docs/architecture.md) for technical
-decisions, event contracts, recovery semantics, and limitations.
+### Architecture Layers
 
-## Technology Stack
-
-| Technology | Purpose | Status |
+| Layer | Technologies | Responsibility |
 |---|---|---|
-| Python | Streaming collector and automated tests | Implemented |
-| Bluesky Jetstream v2 | Public event source | Integrated |
-| Apache Kafka | Event broker | Implemented |
-| Docker Compose | Local Kafka infrastructure | Implemented |
-| GitHub Actions | Automated unit testing | Configured |
-| Apache Flink 2.2.1 | Stateful stream processing and Bronze ingestion | Bronze validated |
-| Flink Kafka SQL Connector | Kafka source integration | Validated locally |
+| Data Source | Bluesky Jetstream v2 | Public activity events |
+| Ingestion | Python, WebSocket | Collection, validation and source checkpointing |
+| Event Transport | Apache Kafka | Event buffering and delivery |
+| Streaming ELT | Apache Flink SQL | Stateful transformations and event-time aggregation |
+| Lakehouse Storage | Apache Paimon | Bronze, Silver, Gold and Quarantine |
+| Data Science & ML | Python, scikit-learn | Feature engineering and Isolation Forest |
+| Execution Coordination | Python E2E Runner | Controlled job execution and ML lifecycle |
+| Infrastructure | Docker Compose | Containerized service lifecycle |
+| Observability | Prometheus, Grafana | Operational metrics and dashboards |
 
-## Implemented Capabilities
+Apache Paimon is integrated with Flink and persists tables
+on the local filesystem. It is not deployed as a separate
+database server.
 
-- Connection to Bluesky Jetstream v2 over WebSocket.
-- Subscription to `app.bsky.feed.post` events.
-- Validation of the minimum event envelope.
-- Publication of minimized metadata to Kafka.
-- Kafka acknowledgment before checkpoint advancement.
-- Local checkpoint persistence and cursor-based restart.
-- Bounded reconnect attempts with exponential backoff.
-- Unit tests for success and failure scenarios.
-- Automated Python CI configuration.
+Python processes execute on the host, while Kafka, Flink
+and monitoring services run through Docker Compose.
 
-## Event Contract
+## Medallion Architecture
 
-Messages published by the collector include:
+**Bronze** preserves minimized Kafka event payloads and
+transport metadata.
 
-- `source`
-- `source_seq`
-- `collection`
-- `operation`
-- `event_time`
-- `witnessed_at`
+**Silver** validates event contracts and separates supported
+records from rejected records sent to Quarantine.
 
-Post text, DIDs, and record identifiers are not stored
-in the Kafka event projection.
+**Gold** materializes finalized ten-second event-time windows
+with activity counts and operation-level aggregates.
 
-The topic `bluesky.posts.raw` currently contains minimized
-metadata rather than complete source records.
+The Gold output is used to derive features for the
+Isolation Forest experiment.
 
-Earlier development and benchmark messages also exist
-in the topic. Historical contents are not homogeneous.
+## Validated End-to-End Execution
 
-## Run Locally
+The platform successfully completed an isolated execution
+with real Bluesky events.
 
-### Requirements
+**Run ID:** `671370fce3cc`
 
-- Python 3.11 or newer
-- Docker with Docker Compose
-- Network access to Bluesky Jetstream
+| Metric | Result |
+|---|---:|
+| Real events collected | 8,345 |
+| Bronze records | 8,345 |
+| Valid Silver records | 8,345 |
+| Quarantined records | 0 |
+| Finalized Gold windows | 17 |
+| Events represented in Gold | 7,554 |
+| Silver events outside finalized windows | 791 |
+| Gold window mismatches | 0 |
+| Late records dropped | 0 |
+| Preserved Flink savepoints | 3 |
+| ML training / evaluation windows | 11 / 6 |
+| End-to-end result | **PASSED** |
 
-### Install
+Events outside finalized Gold windows were accounted for
+during reconciliation and must not be interpreted as lost data.
 
-```bash
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install -e .
-```
+The ML experiment demonstrates successful training and inference,
+not statistically validated production anomaly detection.
 
-### Start Kafka
+## Getting Started
 
-```bash
-docker compose up -d
-```
-
-Provision the Kafka topics using the repository script:
-
-```bash
-bash scripts/create_topics.sh
-```
-
-### Set Up Apache Flink
-
-Install the pinned Kafka SQL connector before starting Flink:
+**Prerequisites:** Python 3.11+, Docker, Docker Compose,
+network access to Bluesky Jetstream and sufficient local resources.
 
 ```bash
-./scripts/install_flink_connector.sh
+git clone https://github.com/fabiodonizetibaptista/bluesky-streaming-platform.git
+cd bluesky-streaming-platform
+
+python3 -m venv .venv
+.venv/bin/python -m pip install -e ".[ml,dev]"
 ```
 
-The installer validates the artifact's SHA-256 checksum. The JAR
-is intentionally excluded from Git and mounted read-only into
-both Flink containers.
+Follow the [Operations Guide](docs/operations/README.md)
+to install Flink connectors and start the infrastructure.
 
-Start Kafka and Flink using their separate Compose configurations:
+Once Kafka and Flink are running, execute the integrated workflow:
 
 ```bash
-docker compose up -d
-docker compose -f compose.flink.yaml up -d
+E2E_MIN_EVENTS=3000 \
+E2E_MIN_DURATION_SECONDS=180 \
+E2E_MAX_EVENTS=250000 \
+E2E_MAX_DURATION_SECONDS=360 \
+.venv/bin/python -u scripts/run_e2e_final.py
 ```
 
-This project uses host networking for Flink as an environment-specific
-workaround validated in GitHub Codespaces. The local filesystem stores
-Flink checkpoints, savepoints, and Bronze outputs under `runtime/flink/`,
-which is excluded from Git.
+Run the automated tests:
 
-### Flink SQL Experiments
+```bash
+.venv/bin/python -m pytest -q
+```
 
-The repository contains four SQL experiments:
+The validated regression suite reported
+42 passed tests and 18 passed subtests.
 
-| File | Purpose |
+## Technical Documentation
+
+| Topic | Documentation |
 |---|---|
-| `sql/01_kafka_connection_test.sql` | Bounded Kafka connector connectivity test |
-| `sql/02_contract_validation.sql` | Diagnostic classification of historical event payloads |
-| `sql/03_kafka_to_bronze.sql` | Bounded Kafka-to-Bronze persistence test |
-| `sql/04_bronze_recovery_test.sql` | Continuous Bronze pipeline for fault-recovery testing |
+| System Architecture | [Architecture](docs/architecture/README.md) |
+| Bluesky and Kafka Ingestion | [Ingestion](docs/ingestion/README.md) |
+| Flink and Paimon Processing | [Processing](docs/processing/README.md) |
+| Operational Monitoring | [Observability](docs/observability/README.md) |
+| Feature Engineering and ML | [Machine Learning](docs/machine-learning/README.md) |
+| End-to-End Experiment | [E2E Validation](docs/e2e/README.md) |
+| Installation and Recovery | [Operations](docs/operations/README.md) |
 
-These are reproducible experiment definitions, not yet a production
-deployment workflow. Existing output directories and Kafka startup
-offset settings must be reviewed before rerunning the SQL files.
+Historical engineering documentation is retained under `docs/`.
 
-### Bronze Validation Results
+## Engineering Scope
 
-In the local experiment, the Bronze filesystem sink preserved
-143 Kafka records with their payload and transport metadata.
-The payload bytes matched the Kafka messages in the tested dataset.
+This project demonstrates practical streaming data engineering:
+source ingestion, messaging, stateful processing, medallion storage,
+event-time analytics, operational visibility and ML integration.
 
-A controlled TaskManager termination produced subsequent task
-execution attempts, followed by successful checkpoints.
-The finalized experimental Bronze output contained 143 unique
-partition-offset pairs, with no duplicates, missing offsets
-within the observed range, or invalid JSON records.
+It is designed for learning and technical portfolio demonstration.
 
-A stop-with-savepoint operation completed successfully. Actual
-restoration from that savepoint has not yet been tested.
-
-These results demonstrate the observed experiment, not a general
-end-to-end exactly-once guarantee.
-
-### Run the Collector
-
-```bash
-python -m bluesky_streaming.ingest
-```
-
-The current collector processes a bounded number of
-confirmed events and then exits.
-
-Checkpoint state is stored locally under `checkpoints/`,
-which is excluded from Git.
-
-### Run Tests
-
-```bash
-python -m unittest discover -s tests -v
-```
-
-The unit tests use mocks and do not require an active
-Bluesky WebSocket connection or Kafka broker.
-
-## Delivery Guarantees
-
-The ingestion design follows an at-least-once strategy
-for events successfully received and processed.
-
-Inclusive cursor replay and crashes between Kafka delivery
-and checkpoint persistence may produce duplicates.
-
-Downstream contract validation and deduplication are planned for Flink Silver.
-
-End-to-end exactly-once processing is not claimed.
-
-## Current Limitations
-
-- Single-node Kafka deployment for local development.
-- Bounded collector execution rather than a managed service.
-- Local filesystem checkpoint.
-- Synchronous publication per event.
-- Flink Bronze has been validated experimentally; Silver, Gold, and analytical storage are not implemented.
-- No implemented quarantine/DLQ.
-- Historical Kafka topic contains experimental messages.
-- Long outages may exceed the source's replay availability.
-- CI execution on GitHub remains to be verified.
-
-## Roadmap
-
-1. Complete Bluesky-to-Kafka ingestion foundation.
-2. Consolidate event contracts, documentation, and CI.
-3. Consolidate and document the validated Apache Flink Bronze pipeline.
-4. Implement Silver contract validation, event-time processing, and deduplication.
-5. Implement quarantine, data quality, and operational observability.
-6. Build Gold analytical outputs and portfolio documentation.
-
-## Security and Privacy
-
-The collector minimizes the data retained from public
-Jetstream events.
-
-Credentials must not be committed to the repository.
-Logs should not expose post content, personal identifiers,
-or secrets.
-
-This project is intended for learning and portfolio
-demonstration, not production deployment.
+The single-node deployment does not claim production high
+availability or universal end-to-end exactly-once delivery.
