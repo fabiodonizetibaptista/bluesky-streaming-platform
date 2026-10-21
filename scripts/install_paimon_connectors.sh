@@ -79,6 +79,7 @@ install_connector() {
         return 1
     fi
 
+    chmod 644 "$temporary"
     mv -n "$temporary" "$destination"
 
     # Segunda verificação protege contra condições de corrida locais.

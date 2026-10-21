@@ -4,10 +4,10 @@ services:
     command: jobmanager
     network_mode: host
     volumes:
-      - ./connectors/flink-sql-connector-kafka-5.0.0-2.2.jar:/opt/flink/lib/flink-sql-connector-kafka-5.0.0-2.2.jar:ro
-      - ./runtime/flink/connectors/paimon-flink-2.2-1.4.2.jar:/opt/flink/lib/paimon-flink-2.2-1.4.2.jar:ro
-      - ./runtime/flink/connectors/paimon-hadoop-uber-1.4.2.jar:/opt/flink/lib/paimon-hadoop-uber-1.4.2.jar:ro
-      - ./runtime/flink:/opt/flink/runtime
+      - ./connectors/flink-sql-connector-kafka-5.0.0-2.2.jar:/opt/flink/lib/flink-sql-connector-kafka-5.0.0-2.2.jar:ro,z
+      - ./runtime/flink/connectors/paimon-flink-2.2-1.4.2.jar:/opt/flink/lib/paimon-flink-2.2-1.4.2.jar:ro,z
+      - ./runtime/flink/connectors/paimon-hadoop-uber-1.4.2.jar:/opt/flink/lib/paimon-hadoop-uber-1.4.2.jar:ro,z
+      - ./runtime/flink:/opt/flink/runtime:z
     mem_limit: 768m
     environment:
       FLINK_PROPERTIES: |
@@ -25,10 +25,10 @@ services:
     command: taskmanager
     network_mode: host
     volumes:
-      - ./connectors/flink-sql-connector-kafka-5.0.0-2.2.jar:/opt/flink/lib/flink-sql-connector-kafka-5.0.0-2.2.jar:ro
-      - ./runtime/flink/connectors/paimon-flink-2.2-1.4.2.jar:/opt/flink/lib/paimon-flink-2.2-1.4.2.jar:ro
-      - ./runtime/flink/connectors/paimon-hadoop-uber-1.4.2.jar:/opt/flink/lib/paimon-hadoop-uber-1.4.2.jar:ro
-      - ./runtime/flink:/opt/flink/runtime
+      - ./connectors/flink-sql-connector-kafka-5.0.0-2.2.jar:/opt/flink/lib/flink-sql-connector-kafka-5.0.0-2.2.jar:ro,z
+      - ./runtime/flink/connectors/paimon-flink-2.2-1.4.2.jar:/opt/flink/lib/paimon-flink-2.2-1.4.2.jar:ro,z
+      - ./runtime/flink/connectors/paimon-hadoop-uber-1.4.2.jar:/opt/flink/lib/paimon-hadoop-uber-1.4.2.jar:ro,z
+      - ./runtime/flink:/opt/flink/runtime:z
     depends_on:
       - flink-jobmanager
     mem_limit: 1536m
