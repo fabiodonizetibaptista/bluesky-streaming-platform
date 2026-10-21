@@ -47,6 +47,7 @@ if ! verify_checksum "$TEMP_FILE"; then
     exit 1
 fi
 
+chmod 644 "$TEMP_FILE"
 mv "$TEMP_FILE" "$DESTINATION"
 
 echo "CONNECTOR_STATUS=INSTALLED_AND_VERIFIED"

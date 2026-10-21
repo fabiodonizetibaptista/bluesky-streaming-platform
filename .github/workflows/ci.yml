@@ -27,12 +27,19 @@ jobs:
 
       # Instala o pacote e suas dependências declaradas no pyproject.toml.
       - name: Install project dependencies
-        run: python -m pip install -e .
+        run: python -m pip install -e '.[dev]'
 
       # Detecta erros de sintaxe antes de executar a suíte.
       - name: Compile Python sources
-        run: python -m compileall -q src tests
+        run: python -m compileall -q src tests scripts
 
       # Testes usam mocks e não exigem Kafka ou Bluesky ativos.
       - name: Run automated tests
-        run: python -m unittest discover -s tests -v
+        run: python -m pytest -q
+
+      # O CI verifica os scripts de provisionamento sem iniciar
+      # serviços ou realizar downloads de dependências Java.
+      - name: Validate connector installation scripts
+        run: |
+          bash -n scripts/install_flink_connector.sh
+          bash -n scripts/install_paimon_connectors.sh
