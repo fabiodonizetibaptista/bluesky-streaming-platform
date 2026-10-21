@@ -8,12 +8,14 @@ services:
       - ./runtime/flink/connectors/paimon-flink-2.2-1.4.2.jar:/opt/flink/lib/paimon-flink-2.2-1.4.2.jar:ro,z
       - ./runtime/flink/connectors/paimon-hadoop-uber-1.4.2.jar:/opt/flink/lib/paimon-hadoop-uber-1.4.2.jar:ro,z
       - ./runtime/flink:/opt/flink/runtime:z
-    mem_limit: 768m
+    mem_limit: 2g
     environment:
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: 127.0.0.1
         jobmanager.rpc.port: 6123
-        jobmanager.memory.process.size: 640m
+        jobmanager.memory.process.size: 1536m
+        metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
+        metrics.reporter.prom.port: 9249
         parallelism.default: 1
         execution.checkpointing.interval: 30s
         execution.checkpointing.dir: file:///opt/flink/runtime/checkpoints
@@ -31,13 +33,15 @@ services:
       - ./runtime/flink:/opt/flink/runtime:z
     depends_on:
       - flink-jobmanager
-    mem_limit: 1536m
+    mem_limit: 8g
     environment:
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: 127.0.0.1
         jobmanager.rpc.port: 6123
-        taskmanager.memory.process.size: 1280m
-        taskmanager.numberOfTaskSlots: 2
+        taskmanager.memory.process.size: 7g
+        taskmanager.numberOfTaskSlots: 4
+        metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
+        metrics.reporter.prom.port: 9250-9251
         parallelism.default: 1
         execution.checkpointing.interval: 30s
         execution.checkpointing.dir: file:///opt/flink/runtime/checkpoints
